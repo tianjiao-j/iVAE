@@ -100,7 +100,7 @@ class Normal(Dist):
         if param_shape is not None:
             mu, v = mu.view(param_shape), v.view(param_shape)
         lpdf = -0.5 * (torch.log(self.c) + v.log() + (x - mu).pow(2).div(v))
-        if reduce:
+        if reduce:  # false
             return lpdf.sum(dim=-1)
         else:
             return lpdf
