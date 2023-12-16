@@ -226,10 +226,10 @@ class ModularIVAE(nn.Module):
         self._training_hyperparams = [1., 1., 1., 1., 1]
 
     def forward(self, x, u):
-        encoder_params = self.encoder(x, u)
+        encoder_params = self.encoder(x, u)   # encoder_params: mean and variance of latent
         z = self.encoder.sample(*encoder_params)
-        decoder_params = self.decoder(z)
-        prior_params = self.prior(u)
+        decoder_params = self.decoder(z)   # decoder_params: mean and variance of x_recon
+        prior_params = self.prior(u)   # prior_params: mean and variance of latent prior distribution
         return decoder_params, encoder_params, prior_params, z
 
     def elbo(self, x, u):
@@ -238,7 +238,7 @@ class ModularIVAE(nn.Module):
         log_qz_xu = self.encoder.log_pdf(z, *encoder_params)
         log_pz_u = self.prior.log_pdf(z, *prior_params)
 
-        if self.anneal_params:
+        if self.anneal_params:  # todo
             a, b, c, d, N = self._training_hyperparams
             M = z.size(0)
             log_qz_tmp = self.encoder.log_pdf(z.view(M, 1, self.latent_dim), encoder_params, reduce=False,
@@ -309,18 +309,20 @@ class iVAE(nn.Module):
         self._training_hyperparams = [1., 1., 1., 1., 1]
 
     def encoder_params(self, x, u):
-        xu = torch.cat((x, u), 1)
-        g = self.g(xu)
-        logv = self.logv(xu)
-        return g, logv.exp()
+        xu = torch.cat((x, u), 1)   # xu - batch_size*(data_dim+aux_dim)
+        g = self.g(xu)         # g - batch_size*latent_dim, self.g - MLP
+        logv = self.logv(xu)   # logv - batch_size*latent_dim
+        return g, logv.exp()   # mean and variance of latent
 
     def decoder_params(self, s):
-        f = self.f(s)
-        return f, self.decoder_var
+        f = self.f(s)   # self.f - MLP
+        #print(self.decoder_var)
+        return f, self.decoder_var   # f: x_recon mean (batch_size*data_dim), self.decoder_var: 0.01
 
     def prior_params(self, u):
-        logl = self.logl(u)
-        return self.prior_mean, logl.exp()
+        logl = self.logl(u)   # self.logl - MLP
+        #print(self.prior_mean)
+        return self.prior_mean, logl.exp()  # prior_mean: 0, logl: prior variance (batch_size*latent_dim)
 
     def forward(self, x, u):
         prior_params = self.prior_params(u)
@@ -335,7 +337,7 @@ class iVAE(nn.Module):
         log_qz_xu = self.encoder_dist.log_pdf(z, g, v)
         log_pz_u = self.prior_dist.log_pdf(z, *prior_params)
 
-        if self.anneal_params:
+        if self.anneal_params:  # todo
             a, b, c, d, N = self._training_hyperparams
             M = z.size(0)
             log_qz_tmp = self.encoder_dist.log_pdf(z.view(M, 1, self.latent_dim), g.view(1, M, self.latent_dim),
