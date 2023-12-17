@@ -293,11 +293,11 @@ class iVAE(nn.Module):
             self.encoder_dist = encoder
 
         # prior_params
-        self.prior_mean = torch.zeros(1).to(device)
+        self.prior_mean = torch.zeros(1).to(device)  # todo
         self.logl = MLP(aux_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope, device=device)
         # decoder params
         self.f = MLP(latent_dim, data_dim, hidden_dim, n_layers, activation=activation, slope=slope, device=device)
-        self.decoder_var = .01 * torch.ones(1).to(device)
+        self.decoder_var = .01 * torch.ones(1).to(device)  # todo
         # encoder params
         self.g = MLP(data_dim + aux_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope,
                      device=device)
@@ -309,7 +309,7 @@ class iVAE(nn.Module):
         self._training_hyperparams = [1., 1., 1., 1., 1]
 
     def encoder_params(self, x, u):
-        xu = torch.cat((x, u), 1)   # xu - batch_size*(data_dim+aux_dim)
+        xu = torch.cat((x, u), 1)   # todo: xu - batch_size*(data_dim+aux_dim)
         g = self.g(xu)         # g - batch_size*latent_dim, self.g - MLP
         logv = self.logv(xu)   # logv - batch_size*latent_dim
         return g, logv.exp()   # mean and variance of latent
