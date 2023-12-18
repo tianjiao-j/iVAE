@@ -299,9 +299,9 @@ class iVAE(nn.Module):
         self.f = MLP(latent_dim, data_dim, hidden_dim, n_layers, activation=activation, slope=slope, device=device)
         self.decoder_var = .01 * torch.ones(1).to(device)  # noise ~ N(0, 0.01*I)
         # encoder params
-        self.g = MLP(data_dim + aux_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope,
+        self.g = MLP(data_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope,
                      device=device)
-        self.logv = MLP(data_dim + aux_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope,
+        self.logv = MLP(data_dim, latent_dim, hidden_dim, n_layers, activation=activation, slope=slope,
                         device=device)
 
         self.apply(weights_init)
@@ -309,7 +309,8 @@ class iVAE(nn.Module):
         self._training_hyperparams = [1., 1., 1., 1., 1]
 
     def encoder_params(self, x, u):
-        xu = torch.cat((x, u), 1)   # xu - batch_size*(data_dim+aux_dim)  todo: undo concat
+        #xu = torch.cat((x, u), 1)   # xu - batch_size*(data_dim+aux_dim)
+        xu = x
         g = self.g(xu)         # g - batch_size*latent_dim, self.g - MLP
         logv = self.logv(xu)   # logv - batch_size*latent_dim
         return g, logv.exp()   # mean and variance of latent
@@ -346,10 +347,10 @@ class iVAE(nn.Module):
             log_qz_i = (torch.logsumexp(log_qz_tmp, dim=1, keepdim=False) - np.log(M * N)).sum(dim=-1)
 
             return (a * log_px_z - b * (log_qz_xu - log_qz) - c * (log_qz - log_qz_i) - d * (
-                    log_qz_i - log_pz_u)).mean(), z
+                    log_qz_i - log_pz_u)).mean(), z, self.decoder_dist.sample(*decoder_params)
 
         else:
-            return (log_px_z + log_pz_u - log_qz_xu).mean(), z
+            return (log_px_z + log_pz_u - log_qz_xu).mean(), z, decoder_params[0]
 
     def anneal(self, N, max_iter, it):
         thr = int(max_iter / 1.6)

@@ -306,17 +306,20 @@ class DataLoaderGPU:
     """
     A custom data loader on GPU.
     """
-    def __init__(self, path, batch_size, shuffle=True):
+    def __init__(self, path, batch_size, latent_dim=None, shuffle=True):
         self.device = torch.device('cuda')
         self.path = path
         data = np.load(path)
         self.data = data
         print('data loaded on {}'.format(self.device))
-        self.s = torch.from_numpy(data['s']).to(self.device)
-        self.x = torch.from_numpy(data['x']).to(self.device)
-        self.u = torch.from_numpy(data['u']).to(self.device)
+        self.s = torch.from_numpy(data['s']).to(self.device).type(torch.float32)
+        self.x = torch.from_numpy(data['x']).to(self.device).type(torch.float32)
+        self.u = torch.from_numpy(data['u']).to(self.device).type(torch.float32)
         self.dataset_len = self.x.shape[0]
-        self.latent_dim = self.s.shape[1]
+        if latent_dim is None:
+            self.latent_dim = self.s.shape[1]
+        else:
+            self.latent_dim = latent_dim
         self.aux_dim = self.u.shape[1]
         self.data_dim = self.x.shape[1]
         self.batch_size = batch_size

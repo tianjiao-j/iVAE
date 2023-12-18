@@ -11,6 +11,9 @@ from lib.data import SyntheticDataset, DataLoaderGPU, create_if_not_exist_datase
 from lib.metrics import mean_corr_coef as mcc
 from lib.models import iVAE
 from lib.utils import Logger, checkpoint
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import os
 
 LOG_FOLDER = 'log/'
 TENSORBOARD_RUN_FOLDER = 'runs/'
@@ -43,9 +46,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.cuda = True
-    args.anneal = True
+    args.anneal = False
     args.preload = True
-    args.file = 'data/tcl_1000_40_2_4_3_1_gauss_xtanh.npz'
+    args.file = 'data/mnist.npz'
+    comments = ''
 
     print(args)
     torch.manual_seed(args.seed)
@@ -70,7 +74,7 @@ if __name__ == '__main__':
         args.N = len(dset)
         metadata.update(dset.get_metadata())
     else:
-        train_loader = DataLoaderGPU(args.file, shuffle=True, batch_size=args.batch_size)
+        train_loader = DataLoaderGPU(args.file, latent_dim=512, shuffle=True, batch_size=args.batch_size)
         data_dim, latent_dim, aux_dim = train_loader.get_dims()
         args.N = train_loader.dataset_len
         metadata.update(train_loader.get_metadata())
@@ -98,6 +102,7 @@ if __name__ == '__main__':
 
     # training loop
     it = 0
+    c = 0
     model.train()
     while it < args.max_iter:
         est = time.time()
@@ -110,14 +115,15 @@ if __name__ == '__main__':
                 x = x.cuda(device=device, non_blocking=True)
                 u = u.cuda(device=device, non_blocking=True)
 
-            elbo, z_est = model.elbo(x, u)
+            elbo, z_est, x_recon = model.elbo(x, u)
             elbo.mul(-1).backward()
             optimizer.step()
 
             logger.update('elbo', -elbo.item())
 
-            perf = mcc(z.cpu().numpy(), z_est.cpu().detach().numpy())
-            logger.update('perf', perf)
+            if not 'mnist' in args.file:
+                perf = mcc(z.cpu().numpy(), z_est.cpu().detach().numpy())
+                logger.update('perf', perf)
 
             if it % args.log_freq == 0:
                 logger.log()
@@ -129,6 +135,27 @@ if __name__ == '__main__':
                 checkpoint(TORCH_CHECKPOINT_FOLDER, exp_id, it, model, optimizer,
                            logger.get_last('elbo'), logger.get_last('perf'))
 
+        # plot x_recon
+        samples = x_recon.cpu().detach().numpy()[:16]
+
+        fig = plt.figure(figsize=(4, 4))
+        gs = gridspec.GridSpec(4, 4)
+        gs.update(wspace=0.05, hspace=0.05)
+
+        for i, sample in enumerate(samples):
+            ax = plt.subplot(gs[i])
+            plt.axis('off')
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_aspect('equal')
+            plt.imshow(sample.reshape(28, 28), cmap='Greys_r')
+
+        if not os.path.exists('out/exp' + str(exp_id)):
+            os.makedirs('out/exp' + str(exp_id))
+
+        plt.savefig('out/exp{}/{}.png'.format(str(exp_id), str(c).zfill(3)), bbox_inches='tight')
+        c += 1
+        plt.close(fig)
         eet = time.time()
         print('epoch {} done in: {}s;\tloss: {};\tperf: {}'.format(int(it / len(train_loader)) + 1, eet - est,
                                                                    logger.get_last('elbo'), logger.get_last('perf')))
