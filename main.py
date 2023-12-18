@@ -42,6 +42,11 @@ if __name__ == '__main__':
     parser.add_argument('-q', '--log-freq', type=int, default=25, help='logging frequency (default 25).')
     args = parser.parse_args()
 
+    args.cuda = True
+    args.anneal = True
+    args.preload = True
+    args.file = 'data/tcl_1000_40_2_4_3_1_gauss_xtanh.npz'
+
     print(args)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
