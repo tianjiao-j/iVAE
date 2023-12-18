@@ -5,12 +5,16 @@ import torch
 from torch import distributions as dist
 from torch import nn
 from torch.nn import functional as F
+from torch.nn import MSELoss, CrossEntropyLoss
 
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
         nn.init.xavier_uniform_(m.weight.data)
 
+def get_kld(mu1, logvar1, mu2, logvar2):
+    var1, var2 = torch.exp(logvar1), torch.exp(logvar2)
+    return torch.mean(torch.log((var2 / var1) ** 0.5) + (var1 + (mu1 - mu2) ** 2) / (2 * var2) - 0.5)
 
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, n_layers, activation='none', slope=.1, device='cpu'):
@@ -247,9 +251,9 @@ class ModularIVAE(nn.Module):
             log_qz_i = (torch.logsumexp(log_qz_tmp, dim=1, keepdim=False) - np.log(M * N)).sum(dim=-1)
 
             return (a * log_px_z - b * (log_qz_xu - log_qz) - c * (log_qz - log_qz_i) - d * (
-                    log_qz_i - log_pz_u)).mean(), z
+                    log_qz_i - log_pz_u)).mean(), z, self.decoder.sample(*decoder_params)
         else:
-            return (log_px_z + log_pz_u - log_qz_xu).mean(), z
+            return (log_px_z + log_pz_u - log_qz_xu).mean(), z, self.decoder.sample(*decoder_params)
 
     def anneal(self, N, max_iter, it):
         thr = int(max_iter / 1.6)
@@ -317,12 +321,10 @@ class iVAE(nn.Module):
 
     def decoder_params(self, s):
         f = self.f(s)   # self.f - MLP
-        #print(self.decoder_var)
         return f, self.decoder_var   # f: x_recon mean (batch_size*data_dim), self.decoder_var: 0.01
 
     def prior_params(self, u):
         logl = self.logl(u)   # self.logl - MLP
-        #print(self.prior_mean)
         return self.prior_mean, logl.exp()  # prior_mean: 0, logl: prior variance (batch_size*latent_dim)
 
     def forward(self, x, u):
@@ -350,7 +352,7 @@ class iVAE(nn.Module):
                     log_qz_i - log_pz_u)).mean(), z, self.decoder_dist.sample(*decoder_params)
 
         else:
-            return (log_px_z + log_pz_u - log_qz_xu).mean(), z, decoder_params[0]
+            return (log_px_z + log_pz_u - log_qz_xu).mean(), z, self.decoder_dist.sample(*decoder_params)
 
     def anneal(self, N, max_iter, it):
         thr = int(max_iter / 1.6)
@@ -521,7 +523,13 @@ class ConvolutionalIVAEforMNIST(nn.Module):
         mup, logl = self.prior(y)
         z = self.reparameterize(mu, logv)
         f = self.decode(z)
-        return f, mu, logv, mup, logl
+        return f, mu, logv, mup, logl, z
+
+    def elbo(self, x, y):
+        x_recon, mu, logvar, mup, logl, z = self.forward(x, y)
+        kld = get_kld(mu, logvar, mup, logl)
+        mse = MSELoss()(x, x_recon)
+        return kld + mse, z, x_recon
 
 
 class iVAEforMNIST(nn.Module):
@@ -564,4 +572,10 @@ class iVAEforMNIST(nn.Module):
         mu, logvar = self.encode(x.view(-1, 784))
         mup, logl = self.prior(y)
         z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar, mup, logl
+        return self.decode(z), mu, logvar, mup, logl, z
+
+    def elbo(self, x, y):
+        x_recon, mu, logvar, mup, logl, z = self.forward(x, y)
+        kld = get_kld(mu, logvar, mup, logl)
+        mse = MSELoss()(x, x_recon)
+        return kld + mse, z, x_recon

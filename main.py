@@ -9,11 +9,12 @@ from torch.utils.data import DataLoader
 
 from lib.data import SyntheticDataset, DataLoaderGPU, create_if_not_exist_dataset
 from lib.metrics import mean_corr_coef as mcc
-from lib.models import iVAE
+from lib.models import iVAE, ModularIVAE, ConvolutionalIVAEforMNIST, iVAEforMNIST
 from lib.utils import Logger, checkpoint
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import os
+from torch.nn import MSELoss
 
 LOG_FOLDER = 'log/'
 TENSORBOARD_RUN_FOLDER = 'runs/'
@@ -49,6 +50,10 @@ if __name__ == '__main__':
     args.anneal = False
     args.preload = True
     args.file = 'data/mnist.npz'
+    if 'mnist' in args.file:
+        latent_dim = 512
+    else:
+        latent_dim = None
     comments = ''
 
     print(args)
@@ -74,7 +79,7 @@ if __name__ == '__main__':
         args.N = len(dset)
         metadata.update(dset.get_metadata())
     else:
-        train_loader = DataLoaderGPU(args.file, latent_dim=512, shuffle=True, batch_size=args.batch_size)
+        train_loader = DataLoaderGPU(args.file, latent_dim=latent_dim, shuffle=True, batch_size=args.batch_size)
         data_dim, latent_dim, aux_dim = train_loader.get_dims()
         args.N = train_loader.dataset_len
         metadata.update(train_loader.get_metadata())
@@ -82,8 +87,12 @@ if __name__ == '__main__':
         args.max_iter = len(train_loader) * args.epochs
 
     # define model and optimizer
-    model = iVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
-                 anneal=args.anneal)
+    # model = iVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
+    #              anneal=args.anneal)
+    # model = ModularIVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
+    #                     anneal=args.anneal)
+    model = ConvolutionalIVAEforMNIST(latent_dim)
+    model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True)
 
@@ -108,22 +117,30 @@ if __name__ == '__main__':
         est = time.time()
         for _, (x, u, z) in enumerate(train_loader):
             it += 1
-            model.anneal(args.N, args.max_iter, it)
+            if isinstance(model, iVAE) or isinstance(model, ModularIVAE):
+                model.anneal(args.N, args.max_iter, it)
             optimizer.zero_grad()
 
             if args.cuda and not args.preload:
                 x = x.cuda(device=device, non_blocking=True)
                 u = u.cuda(device=device, non_blocking=True)
 
-            elbo, z_est, x_recon = model.elbo(x, u)
-            elbo.mul(-1).backward()
-            optimizer.step()
+            if isinstance(model, iVAE) or isinstance(model, ModularIVAE):
+                elbo, z_est, x_recon = model.elbo(x, u)
+                elbo.mul(-1).backward()
+            else:
+                elbo, z_est, x_recon = model.elbo(x, u)
+                elbo.backward()
 
+            optimizer.step()
             logger.update('elbo', -elbo.item())
 
+            # calculate performance
             if not 'mnist' in args.file:
                 perf = mcc(z.cpu().numpy(), z_est.cpu().detach().numpy())
-                logger.update('perf', perf)
+            else:
+                perf = MSELoss()(x.cpu(), x_recon.cpu())
+            logger.update('perf', perf.item())
 
             if it % args.log_freq == 0:
                 logger.log()
