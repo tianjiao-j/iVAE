@@ -89,9 +89,9 @@ if __name__ == '__main__':
     # define model and optimizer
     # model = iVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
     #              anneal=args.anneal)
-    # model = ModularIVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
-    #                     anneal=args.anneal)
-    model = ConvolutionalIVAEforMNIST(latent_dim)
+    model = ModularIVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
+                        anneal=args.anneal)
+    #model = ConvolutionalIVAEforMNIST(latent_dim)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, verbose=True)

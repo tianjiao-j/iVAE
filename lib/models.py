@@ -220,7 +220,7 @@ class ModularIVAE(nn.Module):
             self.decoder = decoder
 
         if encoder is None:
-            self.encoder = GaussianMLP(data_dim + aux_dim, latent_dim, hidden_dim, n_layers, activation=activation,
+            self.encoder = GaussianMLP(data_dim, latent_dim, hidden_dim, n_layers, activation=activation,
                                        slope=slope, device=device)
         else:
             self.encoder = encoder
@@ -230,7 +230,7 @@ class ModularIVAE(nn.Module):
         self._training_hyperparams = [1., 1., 1., 1., 1]
 
     def forward(self, x, u):
-        encoder_params = self.encoder(x, u)   # encoder_params: mean and variance of latent
+        encoder_params = self.encoder(x)   # encoder_params: mean and variance of latent
         z = self.encoder.sample(*encoder_params)
         decoder_params = self.decoder(z)   # decoder_params: mean and variance of x_recon
         prior_params = self.prior(u)   # prior_params: mean and variance of latent prior distribution
