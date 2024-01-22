@@ -103,7 +103,7 @@ class Normal(Dist):
         """compute the log-pdf of a normal distribution with diagonal covariance"""
         if param_shape is not None:
             mu, v = mu.view(param_shape), v.view(param_shape)
-        lpdf = -0.5 * (torch.log(self.c) + v.log() + (x - mu).pow(2).div(v))
+        lpdf = -0.5 * (torch.log(self.c) + v.log() + (x - mu).pow(2).div(v))  # batch_size*data_dim
         if reduce:  # false
             return lpdf.sum(dim=-1)
         else:

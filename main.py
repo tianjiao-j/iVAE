@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import os
 from torch.nn import MSELoss
+torch.manual_seed(42)
 
 LOG_FOLDER = 'log/'
 TENSORBOARD_RUN_FOLDER = 'runs/'
@@ -31,12 +32,12 @@ if __name__ == '__main__':
                              'This will overwrite the `file` argument if given. (default None). '
                              'In case of this argument and `file` argument being None, a default dataset '
                              'described in data.py will be created.')
-    parser.add_argument('-b', '--batch-size', type=int, default=64, help='batch size (default 64)')
+    parser.add_argument('-b', '--batch-size', type=int, default=16, help='batch size (default 64)')
     parser.add_argument('-e', '--epochs', type=int, default=20, help='number of epochs (default 20)')
     parser.add_argument('-m', '--max-iter', type=int, default=None, help='max iters, overwrites --epochs')
     parser.add_argument('-g', '--hidden-dim', type=int, default=50, help='hidden dim of the networks (default 50)')
     parser.add_argument('-d', '--depth', type=int, default=3, help='depth (n_layers) of the networks (default 3)')
-    parser.add_argument('-l', '--lr', type=float, default=1e-3, help='learning rate (default 1e-3)')
+    parser.add_argument('-l', '--lr', type=float, default=1e-4, help='learning rate (default 1e-3)')
     parser.add_argument('-s', '--seed', type=int, default=1, help='random seed (default 1)')
     parser.add_argument('-c', '--cuda', action='store_true', default=False, help='train on gpu')
     parser.add_argument('-p', '--preload-gpu', action='store_true', default=False, dest='preload',
@@ -47,11 +48,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.cuda = True
-    args.anneal = False
+    args.anneal = True
     args.preload = True
     args.file = 'data/mnist.npz'
+    #args.file = 'data/tcl_1000_40_2_4_3_1_gauss_xtanh.npz'
     if 'mnist' in args.file:
-        latent_dim = 512
+        latent_dim = 128
     else:
         latent_dim = None
     comments = ''
@@ -87,10 +89,10 @@ if __name__ == '__main__':
         args.max_iter = len(train_loader) * args.epochs
 
     # define model and optimizer
-    # model = iVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
-    #              anneal=args.anneal)
-    model = ModularIVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
-                        anneal=args.anneal)
+    model = iVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
+                 anneal=args.anneal)
+    # model = ModularIVAE(latent_dim, data_dim, aux_dim, activation='lrelu', device=device, hidden_dim=args.hidden_dim,
+    #                     anneal=args.anneal)
     #model = ConvolutionalIVAEforMNIST(latent_dim)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -153,26 +155,53 @@ if __name__ == '__main__':
                            logger.get_last('elbo'), logger.get_last('perf'))
 
         # plot x_recon
-        samples = x_recon.cpu().detach().numpy()[:16]
+        if args.file == 'data/mnist.npz':
+            prior_params = model.prior_params(u)
+            z = model.prior_dist.sample(*prior_params)
+            decoder_params = model.decoder_params(z)
+            x_T = model.decoder_dist.sample(*decoder_params)
+            samples = x_T.cpu().detach().numpy()[:16]
 
-        fig = plt.figure(figsize=(4, 4))
-        gs = gridspec.GridSpec(4, 4)
-        gs.update(wspace=0.05, hspace=0.05)
+            fig = plt.figure(figsize=(4, 4))
+            gs = gridspec.GridSpec(4, 4)
+            gs.update(wspace=0.05, hspace=0.05)
 
-        for i, sample in enumerate(samples):
-            ax = plt.subplot(gs[i])
-            plt.axis('off')
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            ax.set_aspect('equal')
-            plt.imshow(sample.reshape(28, 28), cmap='Greys_r')
+            for i, sample in enumerate(samples):
+                ax = plt.subplot(gs[i])
+                plt.axis('off')
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+                ax.set_aspect('equal')
+                plt.imshow(sample.reshape(28, 28), cmap='Greys_r')
 
-        if not os.path.exists('out/exp' + str(exp_id)):
-            os.makedirs('out/exp' + str(exp_id))
+            if not os.path.exists('out/exp' + str(exp_id)):
+                os.makedirs('out/exp' + str(exp_id))
 
-        plt.savefig('out/exp{}/{}.png'.format(str(exp_id), str(c).zfill(3)), bbox_inches='tight')
-        c += 1
-        plt.close(fig)
+            plt.savefig('out/exp{}/{}_samples.png'.format(str(exp_id), str(c).zfill(3)), bbox_inches='tight')
+            c += 1
+            plt.close(fig)
+
+            samples = x_recon.cpu().detach().numpy()[:16]
+
+            fig = plt.figure(figsize=(4, 4))
+            gs = gridspec.GridSpec(4, 4)
+            gs.update(wspace=0.05, hspace=0.05)
+
+            for i, sample in enumerate(samples):
+                ax = plt.subplot(gs[i])
+                plt.axis('off')
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+                ax.set_aspect('equal')
+                plt.imshow(sample.reshape(28, 28), cmap='Greys_r')
+
+            if not os.path.exists('out/exp' + str(exp_id)):
+                os.makedirs('out/exp' + str(exp_id))
+
+            plt.savefig('out/exp{}/{}_recons.png'.format(str(exp_id), str(c).zfill(3)), bbox_inches='tight')
+            c += 1
+            plt.close(fig)
+
         eet = time.time()
         print('epoch {} done in: {}s;\tloss: {};\tperf: {}'.format(int(it / len(train_loader)) + 1, eet - est,
                                                                    logger.get_last('elbo'), logger.get_last('perf')))
